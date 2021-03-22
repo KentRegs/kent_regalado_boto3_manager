@@ -1,0 +1,10 @@
+[
+    {
+        "AttributeName": "category",
+        "AttributeType": "S"
+    },
+    {
+	    "AttributeName": "sku",
+		"AttributeType": "S"
+	}
+]

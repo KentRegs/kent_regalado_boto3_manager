@@ -74,7 +74,7 @@ if __name__ == '__main__':
 	subparsers = parser.add_subparsers()
 
 	sns_create = subparsers.add_parser('create')
-	sns_create.add_argument('--topicname', help='SNS topic name.')
+	sns_create.add_argument('topicname', help='SNS topic name.')
 	sns_create.set_defaults(func=create_sns_topic)
 
 	sns_list_topics = subparsers.add_parser('list_topics')

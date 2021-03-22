@@ -4,6 +4,7 @@ import operator as op
 import argparse
 import logging
 import boto3
+import json
 
 def create_dynamo_table(table_name, pk, pkdef):
 	ddb = boto3.resource('dynamodb')
@@ -17,7 +18,7 @@ def create_dynamo_table(table_name, pk, pkdef):
 		}
 	)	
 
-table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+	table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
 	return table
 
@@ -50,15 +51,17 @@ def get_dynamo_table(table_name):
 
 	return ddb.Table(table_name)
 
-def create_product(category, sku, **item):
-	table = get_dynamo_table('products')
+def create_product(category, sku, **product):
+	table = get_dynamo_table('products_kent')
 	keys = {
 		'category': category,
 		'sku': sku,
 	}
-	item.update(keys)
-	table.put_item(Item=item)
+	product.update(keys)
+	table.put_item(Item=product)
 
+	# print(table)
+	# print(table.get_item(Key=keys)['Item'])
 	return table.get_item(Key=keys)['Item']
 
 # product = create_product(
@@ -69,24 +72,29 @@ def create_product(category, sku, **item):
 # 	in_stock=True
 # )
 
-def update_product(category, sku, **item):
-	table = get_dynamo_table('products')
+# refactored **item to **product to prevent 
+# "botocore.exceptions.ClientError: An error occurred (ValidationException) 
+# when calling the UpdateItem operation: Invalid UpdateExpression: Attribute 
+# name is a reserved keyword; reserved keyword: item" from occurring
+def update_product(category, sku, **product):
+	table = get_dynamo_table('products_kent')
 	keys = {
 		'category': category,
 		'sku': sku,
 	}
-	expr = ', '.join([f'{k}=:{k}' for k in item.keys()])
-	vals = {f':{k}': v for k, v in item.items()}
+	expr = ', '.join([f'{k}=:{k}' for k in product.keys()])
+	vals = {f':{k}': v for k, v in product.items()}
 	table.update_item(
 		Key=keys,
 		UpdateExpression=f'SET {expr}',
-		ExpressionAttributeValues=vals,
+		ExpressionAttributeValues=vals
 	)
 
+	print(table.get_item(Key=keys)['Item'])
 	return table.get_item(Key=keys)['Item']
 
 def delete_product(category, sku):
-	table = get_dynamo_table('products')
+	table = get_dynamo_table('products_kent')
 	keys = {
 		'category': category,
 		'sku': sku,
@@ -99,34 +107,35 @@ def delete_product(category, sku):
 	
 	return False
 
-def create_dynamo_items(table_name, items, keys=None):
+def create_dynamo_items(table_name, products, keys=None):
 	table = get_dynamo_table(table_name)
 	params = {
 		'overwrite_by_pkeys': keys
 	} if keys else {}
 	with table.batch_writer(**params) as batch:
-		for item in items:
-		batch.put_item(Item=item)
+		for product in products:
+			batch.put_item(Item=product)
 
 	return True
 
 def query_products(key_expr, filter_expr=None):
 	# Query requires that you provide the key filters
-	table = get_dynamo_table('products')
+	table = get_dynamo_table('products_kent')
 	params = {
 		'KeyConditionExpression': key_expr,
 	}
 	if filter_expr:
 		params['FilterExpression'] = filter_expr
-		res = table.query(**params)
 	
-	return res['Items']
+	res = table.query(**params)
+	
+	return res['Products']
 
 def scan_products(filter_expr):
 	# Scan does not require a key filter. It will go through
 	# all items in your table and return all matching items.
 	# Use with caution!
-	table = get_dynamo_table('products')
+	table = get_dynamo_table('products_kent')
 	params = {
 		'FilterExpression': filter_expr,
 	}
@@ -147,8 +156,8 @@ if __name__ == '__main__':
 
 	dynamo_create = subparsers.add_parser('create')
 	dynamo_create.add_argument('table_name', help='Table name.')
-	dynamo_create.add_argument('pk', help='Primary key/s.')
-	dynamo_create.add_argument('pkdef', help='Primary key/s defiition/s.')
+	dynamo_create.add_argument('pk', help='Primary key/s.', type=argparse.FileType('r'))
+	dynamo_create.add_argument('pkdef', help='Primary key/s definition/s.', type=argparse.FileType('r'))
 	dynamo_create.set_defaults(func=create_dynamo_table)
 
 	dynamo_get = subparsers.add_parser('get')
@@ -158,13 +167,13 @@ if __name__ == '__main__':
 	dynamo_create_product = subparsers.add_parser('create_product')
 	dynamo_create_product.add_argument('category', help='Product category.')
 	dynamo_create_product.add_argument('sku', help='Stock-keeping unit.')
-	dynamo_create_product.add_argument('item', help='Item/s.', nargs='+')
+	dynamo_create_product.add_argument('product', help='Product/s.', nargs='+')
 	dynamo_create_product.set_defaults(func=create_product)	
 
 	dynamo_update_product = subparsers.add_parser('update_product')
 	dynamo_update_product.add_argument('category', help='Product category.')
 	dynamo_update_product.add_argument('sku', help='Stock-keeping unit.')
-	dynamo_update_product.add_argument('item', help='Item/s.', nargs='+')
+	dynamo_update_product.add_argument('product', help='Product/s.', nargs='+')
 	dynamo_update_product.set_defaults(func=update_product)	
 
 	dynamo_delete = subparsers.add_parser('delete')
@@ -174,7 +183,7 @@ if __name__ == '__main__':
 
 	dynamo_create_items = subparsers.add_parser('create_items')
 	dynamo_create_items.add_argument('table_name', help='Table name.')
-	dynamo_create_items.add_argument('items', help='Items.')
+	dynamo_create_items.add_argument('products', help='Products.')
 	dynamo_create_items.add_argument('--keys', help='Primary keys.')
 	dynamo_create_items.set_defaults(func=create_dynamo_items)		
 
@@ -197,8 +206,8 @@ if __name__ == '__main__':
 		if args.func.__name__ == 'create_dynamo_table':
 			args.func(
 				table_name=args.table_name, 
-				pk=args.pk,
-				pkdef=args.pkdef
+				pk=json.load(args.pk),
+				pkdef=json.load(args.pkdef)
 			)
 		elif args.func.__name__ == 'get_dynamo_table':
 			args.func(table_name=args.table_name)
@@ -206,13 +215,13 @@ if __name__ == '__main__':
 			args.func(
 				category=args.category, 
 				sku=args.sku,
-				**item=args.item
+				product=args.product
 			)
 		elif args.func.__name__ == 'update_product':
 			args.func(
 				category=args.category, 
 				sku=args.sku,
-				**item=args.item
+				product=args.product
 			)
 		elif args.func.__name__ == 'delete_product':
 			args.func(
@@ -222,7 +231,7 @@ if __name__ == '__main__':
 		elif args.func.__name__ == 'create_dynamo_items':
 			args.func(
 				table_name=args.table_name, 
-				items=args.items,
+				products=args.products,
 				keys=args.keys
 			)
 		elif args.func.__name__ == 'query_products':

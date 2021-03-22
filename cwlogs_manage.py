@@ -5,63 +5,84 @@ import boto3
 
 log = logging.getLogger(__name__)
 
-def create_sns_topic(topic_name):
-	sns = boto3.client('sns')
-	sns.create_topic(Name=topic_name)
-
-	return True
-
-def list_sns_topics(next_token=None):
-	sns = boto3.client('sns')
-	params = {'NextToken': next_token} if next_token else {}
-	topics = sns.list_topics(**params)
-	
-	return topics.get('Topics', []), topics.get('NextToken', None)
-
-def list_sns_subscriptions(next_token=None):
-	sns = boto3.client('sns')
-	params = {'NextToken': next_token} if next_token else {}
-	subscriptions = sns.list_subscriptions(**params)
-	
-	return subscriptions.get('Subscriptions', []),
-subscriptions.get('NextToken', None)
-
-def subscribe_sns_topic(topic_arn, mobile_number):
-	sns = boto3.client('sns')
+def list_log_groups(group_name=None, region_name=None):
+	cwlogs = boto3.client('logs', region_name=region_name)
 	params = {
-		'TopicArn': topic_arn,
-		'Protocol': 'sms',
-		'Endpoint': mobile_number,
-	}
-	res = sns.subscribe(**params)
-	print(res)
-	
-	return True
+		'logGroupNamePrefix': group_name,
+	} if group_name else {}
+	res = cwlogs.describe_log_groups(**params)
 
-def send_sns_message(topic_arn, message):
-	sns = boto3.client('sns')
+	print(res['logGroups'])
+	return res['logGroups']
+
+def list_log_group_streams(group_name, stream_name=None, region_name=None):
+	cwlogs = boto3.client('logs', region_name=region_name)
 	params = {
-		'TopicArn': topic_arn,
-		'Message': message,
-	}
-	res = sns.publish(**params)
-	print(res)
+		'logGroupName': group_name,
+	} if group_name else {}
+	if stream_name:
+		params['logStreamNamePrefix'] = stream_name
+		res = cwlogs.describe_log_streams(**params)
 
-	return True
+	return res['logStreams']
 
-def unsubscribe_sns_topic(subscription_arn):
-	sns = boto3.client('sns')
+def filter_log_events(
+	group_name, filter_pat,
+	start=None, stop=None,
+	region_name=None
+):
+	cwlogs = boto3.client('logs', region_name=region_name)
 	params = {
-		'SubscriptionArn': subscription_arn,
+		'logGroupName': group_name,
+		'filterPattern': filter_pat,
 	}
-	res = sns.unsubscribe(**params)
-	print(res)
+	if start:
+		params['startTime'] = start
+		if stop:
+			params['endTime'] = stop
+		res = cwlogs.filter_log_events(**params)
+		
+		return res['events']
 
-	return True
+if __name__ == '__main__':	
+	parser = argparse.ArgumentParser()
+	subparsers = parser.add_subparsers()
 
-def delete_sns_topic(topic_arn):
-	# This will delete the topic and all it's subscriptions.
-	sns = boto3.client('sns')
-	sns.delete_topic(TopicArn=topic_arn)
+	cw_list_grps = subparsers.add_parser('list_grps')
+	cw_list_grps.add_argument('--groupname', help='Group name.')
+	cw_list_grps.add_argument('--region', help='AWS Region.')
+	cw_list_grps.set_defaults(func=list_log_groups)
 
-	return True
+	cw_list_grp_strms = subparsers.add_parser('list_grp_strms')
+	cw_list_grp_strms.add_argument('groupname', help='Group name.')
+	cw_list_grp_strms.add_argument('--streamname', help='Stream name.')
+	cw_list_grp_strms.add_argument('--region', help='AWS Region.')
+	cw_list_grp_strms.set_defaults(func=list_log_group_streams)
+
+	cw_filter_log_events = subparsers.add_parser('filter')
+	cw_filter_log_events.add_argument('groupname', help='Group name.')
+	cw_filter_log_events.add_argument('filterpat', help='Stream name.')
+	cw_filter_log_events.add_argument('--start', help='Start.')
+	cw_filter_log_events.add_argument('--stop', help='Stop.')
+	cw_filter_log_events.add_argument('--region', help='AWS Region.')
+	cw_filter_log_events.set_defaults(func=filter_log_events)
+
+	args = parser.parse_args()
+
+	if hasattr(args, 'func'):
+		if args.func.__name__ == 'list_log_groups':
+			args.func(group_name=args.groupname, region_name=args.region)
+		elif args.func.__name__ == 'list_log_group_streams':
+			args.func(\
+				group_name=args.groupname, 
+				stream_name=args.streamname,
+				region_name=args.region
+			)
+		elif args.func.__name__ == 'filter_log_events':
+			args.func(
+				group_name=args.groupname, 
+				filter_pat=args.filterpat,
+				start=args.start,
+				stop=args.stop,
+				region_name=region
+			)

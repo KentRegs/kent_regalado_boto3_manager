@@ -1,0 +1,10 @@
+[
+    {
+        "AttributeName": "category",
+        "KeyType": "HASH"
+    },
+    {
+	    "AttributeName": "sku",
+		"KeyType": "RANGE"
+	}
+]
