@@ -1,12 +1,14 @@
 from botocore.exceptions import ClientError
+from pathlib import Path
 import argparse
+import pathlib
 import logging
 import boto3
 
 log = logging.getLogger(__name__)
 
 def create_bucket(name, region=None):
-	region = region or 'us-east-2'
+	region = region or 'ap-southeast-1'
 	client = boto3.client('s3', region_name=region)
 	
 	params = {
@@ -38,6 +40,7 @@ def get_bucket(name, create=False, region=None):
 	bucket = client.Bucket(name=name)
 
 	if bucket.creation_date:
+		# print(f'Bucket <{name}> was created on {bucket.creation_date}.')
 		log.info(f'Bucket <{name}> was created on {bucket.creation_date}.')
 		return bucket		
 	else:
@@ -214,9 +217,9 @@ if __name__ == '__main__':
 		elif args.func.__name__ == 'create_tempfile':
 			args.func(file_name=args.filename, content=args.content)
 		elif args.func.__name__ == 'create_bucket_object':
-			args.func(bucket_name=args.name, file_path=args.path, keyprefix=args.keyprefix)
+			args.func(bucket_name=args.bucket_name, file_path=args.path, key_prefix=args.keyprefix)
 		elif args.func.__name__ == 'get_bucket_object':
-			args.func(bucket_name=args.name, object_key=args.objectkey, dest=args.dest)
+			args.func(bucket_name=args.bucket_name, object_key=args.object_key, dest=args.dest)
 		elif args.func.__name__ == 'enable_bucket_versioning':
 			args.func(bucket_name=args.bucket_name)
 		elif args.func.__name__ == 'delete_bucket_objects':
